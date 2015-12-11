@@ -77,7 +77,7 @@ def calculateDistance(lat, longitude):
 	global gGeofence
 
 	currentLocation = (lat, longitude)
-	homeLocation = (('%.6f' % gLatitude), ('%.6f' %  gLongitude))
+	homeLocation = (('%.6f' % float(gLatitude)), ('%.6f' %  float(gLongitude)))
 	distance = (vincenty(currentLocation, homeLocation).meters)
 	if int(distance) <= gGeofence:
 		return True
