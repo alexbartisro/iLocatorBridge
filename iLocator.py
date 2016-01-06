@@ -1,8 +1,9 @@
 from pyicloud import PyiCloudService
 from geopy.distance import vincenty
 import ConfigParser
-import ast, sys, time, requests, base64
+import ast, sys, time, requests, base64, logging
 
+logging.basicConfig(filename='iLocatorLog.log',level=logging.DEBUG, format='%(asctime)s %(message)s')
 gConfig = ConfigParser.ConfigParser()
 gConfigurationiCloud = {}
 gConfigurationGeofence = {}
@@ -15,9 +16,13 @@ def configurationManager():
 
 	try:
 		gConfig.read('configuration.ini')
+		logging.info('Configuration loaded')
 	except:
-		print('\r\nNo configuration avaialble. Please see https://github.com/trusk89/iLocatorBridge for configuration')
-	gConfigurationiCloud = configSectionMap('iCloud') 
+		print('Exception! Please check the log')
+		logging.error('\r\nNo configuration avaialble. Please see https://github.com/trusk89/iLocatorBridge for configuration')
+		sys.exit(0)
+	
+	gConfigurationiCloud = configSectionMap('iCloud')
 	gConfigurationGeofence = configSectionMap('Geofence')
 	gConfigurationOH = configSectionMap('OpenHab')
 
@@ -28,18 +33,26 @@ def configSectionMap(section):
 		try:
 			dict[option] = gConfig.get(section, option)
 		except:
-			print('exception on %s!' % option)
-			dict[option] = None
+			print('Exception! Please check the log')
+			logging.error('exception on %s!' % option)
+			sys.exit(0)
+	logging.info('Configuration %s parsed' % (section))
 	return dict
 	
 def getDeviceCoordinates():
 	global gConfigurationiCloud
 	global gConfigurationGeofence
 
-	gRequester = PyiCloudService(gConfigurationiCloud['username'], gConfigurationiCloud['password'])
-	deviceList = gRequester.devices
-	locationDictionary = (gRequester.devices[gConfigurationiCloud['deviceid']].location())
+	try:
+		gRequester = PyiCloudService(gConfigurationiCloud['username'], gConfigurationiCloud['password'])
+		deviceList = gRequester.devices
+		locationDictionary = (gRequester.devices[gConfigurationiCloud['deviceid']].location())
+	except Exception, e:
+		print('Exception! Please check the log')
+		logging.error('Could not get device coordinates')
+		sys.exit(0)
 	return float(locationDictionary['latitude']), float(locationDictionary['longitude'])
+	
 
 def calculateDistance(lat, longitude):
 	global gConfigurationGeofence
@@ -59,10 +72,14 @@ def postUpdate(state):
 	global gConfigurationOH
 
 	url = '%s/rest/items/%s/state' % (gServer, gConfigurationOH['ohitem'])
-	req = requests.put(url, data=state, headers=basic_header())
-	if req.status_code != requests.codes.ok:
-		req.raise_for_status()
-        
+	try:
+		req = requests.put(url, data=state, headers=basic_header())
+		if req.status_code != requests.codes.ok:
+			req.raise_for_status()
+		logging.info('Update posted to OpenHab')
+	except Exception, e:
+		print('Exception! Please check the log. Will continue execution.')
+		logging.error('Could not post update to OpenHab')
 
 def basic_header():
 	global gConfigurationOH
@@ -81,8 +98,10 @@ if __name__ == "__main__":
 		lat, long = getDeviceCoordinates()
 		if calculateDistance(lat, long) == True:
 			print ('YES')
+			logging.info('User is in Geofence')
 			# postUpdate('ON')
 		else:
 			print('NO')
+			logging.info('User is outside of Geofence')
 			# postUpdate('OFF')
 		time.sleep(60)
