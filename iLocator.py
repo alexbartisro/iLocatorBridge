@@ -94,6 +94,7 @@ def basic_header():
 
 if __name__ == "__main__":
 	configurationManager()
+
 	while 1:
 		lat, long = getDeviceCoordinates()
 		if calculateDistance(lat, long) == True:
@@ -104,4 +105,4 @@ if __name__ == "__main__":
 			print('NO')
 			logging.info('User is outside of Geofence')
 			postUpdate('OFF')
-		time.sleep(60)
+		time.sleep(int(gConfigurationOH['interval']))
