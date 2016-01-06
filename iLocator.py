@@ -1,97 +1,88 @@
 from pyicloud import PyiCloudService
 from geopy.distance import vincenty
-import numpy as np
-import ast, sys, time
+import ConfigParser
+import ast, sys, time, requests, base64
 
-gConfiguration = {}
-gUsername = ""
-gPassword = ""
-gDeviceID = ""
-gRequester = None
-gLatitude = 0
-gLongitude = 0
-gGeofence = 300
-
-def readingFile():
-	global gConfiguration 
-	global gUsername
-	global gPassword
-	global gDeviceID
-	global gLatitude
-	global gLongitude
-
-	gConfiguration = np.load('configuration.npy').item()
-
-	gUsername = gConfiguration['username']
-	gPassword = gConfiguration['password']
-	gDeviceID = gConfiguration['deviceID']
-	gLatitude =float(gConfiguration['latitude'])
-	gLongitude = float(gConfiguration['longitude'])
-	print('\r\nSuccessfully loaded configuration\r\n')		
-
-def requestCredentials():
-	global gUsername
-	global gPassword
-	global gLatitude
-	global gLongitude
-
-	gUsername = raw_input('Please insert your Apple ID\r\n')
-	gPassword = raw_input('Please insert your Apple ID password\r\n')
-	gLatitude = raw_input('Please insert your latitude (like: 12.345678)\r\n')
-	gLongitude = raw_input('Please insert your long (like: 12.345678)\r\n')
-	writingFile(gUsername, gPassword, '', gLatitude, gLongitude)
-
-def writingFile(user, passwd, devID, lat, long):
-	global gConfiguration 
-
-	gConfiguration = {'username':user,'password':passwd,'deviceID':devID, 'latitude':lat, 'longitude':long}
-	np.save('configuration.npy', gConfiguration)
+gConfig = ConfigParser.ConfigParser()
+gConfigurationiCloud = {}
+gConfigurationGeofence = {}
+gConfigurationOH = {}
 
 def configurationManager():
+	global gConfigurationiCloud
+	global gConfigurationGeofence
+	global gConfigurationOH
+
 	try:
-		readingFile()
+		gConfig.read('configuration.ini')
 	except:
-		print('\r\nNo configuration avaialble. Let\'s set it up!')
-		requestCredentials()
+		print('\r\nNo configuration avaialble. Please see https://github.com/trusk89/iLocatorBridge for configuration')
+	gConfigurationiCloud = configSectionMap('iCloud') 
+	gConfigurationGeofence = configSectionMap('Geofence')
+	gConfigurationOH = configSectionMap('OpenHab')
+
+def configSectionMap(section):
+	dict = {}
+	options = gConfig.options(section)
+	for option in options:
+		try:
+			dict[option] = gConfig.get(section, option)
+		except:
+			print('exception on %s!' % option)
+			dict[option] = None
+	return dict
 	
 def getDeviceCoordinates():
-	global gUsername
-	global gPassword
-	global gDeviceID
-	global gRequester
+	global gConfigurationiCloud
+	global gConfigurationGeofence
 
-	gRequester = PyiCloudService(gUsername, gPassword)
+	gRequester = PyiCloudService(gConfigurationiCloud['username'], gConfigurationiCloud['password'])
 	deviceList = gRequester.devices
-
-	if gDeviceID == '':
-		print ('The device list is ')
-		print (deviceList)
-		gDeviceID = raw_input('Insert the ID of the device you want to localize\r\n')
-		writingFile(gUsername, gPassword, gDeviceID, gLatitude, gLongitude)
-	locationDictionary = (gRequester.devices[gDeviceID].location())
+	locationDictionary = (gRequester.devices[gConfigurationiCloud['deviceid']].location())
 	return float(locationDictionary['latitude']), float(locationDictionary['longitude'])
 
 def calculateDistance(lat, longitude):
-	global gLatitude
-	global gLongitude
-	global gGeofence
+	global gConfigurationGeofence
 
 	currentLocation = (lat, longitude)
-	homeLocation = (('%.6f' % float(gLatitude)), ('%.6f' %  float(gLongitude)))
-	distance = (vincenty(currentLocation, homeLocation).meters)
-	if int(distance) <= gGeofence:
+	homeLocation = (('%.6f' % float(gConfigurationGeofence['homelatitude'])), ('%.6f' %  float(gConfigurationGeofence['homelongitude'])))
+	if gConfigurationGeofence['distanceunit'] == 'm':
+		distance = (vincenty(currentLocation, homeLocation).meters)
+	else:
+		distance = (vincenty(currentLocation, homeLocation).feet)
+	if int(distance) <= int(gConfigurationGeofence['geofenceradius']):
 		return True
 	else:
 		return False
 
+def postUpdate(state):
+	global gConfigurationOH
+
+	url = '%s/rest/items/%s/state' % (gServer, gConfigurationOH['ohitem'])
+	req = requests.put(url, data=state, headers=basic_header())
+	if req.status_code != requests.codes.ok:
+		req.raise_for_status()
+        
+
+def basic_header():
+	global gConfigurationOH
+
+	auth = base64.encodestring('%s:%s'
+                       %(gConfigurationOH['ohusername'], gConfigurationOH['ohpassword'])
+                       ).replace('\n', '')
+	return {
+            "Authorization" : "Basic %s" %auth,
+            "Content-type": "text/plain"}
+
 
 if __name__ == "__main__":
-	configurationManager()	
-	print('Requesting devices for username ' + gUsername + ' and password ' + gPassword)
+	configurationManager()
 	while 1:
 		lat, long = getDeviceCoordinates()
 		if calculateDistance(lat, long) == True:
-			print ('Yey, I\'m home')
+			print ('YES')
+			# postUpdate('ON')
 		else:
-			print ('Not home yet')
+			print('NO')
+			# postUpdate('OFF')
 		time.sleep(60)
