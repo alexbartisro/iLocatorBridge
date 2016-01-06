@@ -6,7 +6,7 @@ Install:
 
 1. pip install numpy
 
-2. Download and install https://github.com/walchko/pyicloud
+2. Download and install https://github.com/picklepete/pyicloud
 
 3. run 'python iLocator.py'
 
