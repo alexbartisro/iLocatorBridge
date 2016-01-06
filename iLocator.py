@@ -8,6 +8,7 @@ gConfig = ConfigParser.ConfigParser()
 gConfigurationiCloud = {}
 gConfigurationGeofence = {}
 gConfigurationOH = {}
+gRequester = None
 
 def configurationManager():
 	global gConfigurationiCloud
@@ -15,7 +16,7 @@ def configurationManager():
 	global gConfigurationOH
 
 	try:
-		gConfig.read('configuration.ini')
+		gConfig.read('configuration2.ini')
 		logging.info('Configuration loaded')
 	except:
 		print('Exception! Please check the log')
@@ -42,9 +43,9 @@ def configSectionMap(section):
 def getDeviceCoordinates():
 	global gConfigurationiCloud
 	global gConfigurationGeofence
+	global gRequester
 
 	try:
-		gRequester = PyiCloudService(gConfigurationiCloud['username'], gConfigurationiCloud['password'])
 		deviceList = gRequester.devices
 		locationDictionary = (gRequester.devices[gConfigurationiCloud['deviceid']].location())
 	except Exception, e:
@@ -71,7 +72,7 @@ def calculateDistance(lat, longitude):
 def postUpdate(state):
 	global gConfigurationOH
 
-	url = '%s/rest/items/%s/state' % (gServer, gConfigurationOH['ohitem'])
+	url = '%s/rest/items/%s/state' % (gConfigurationOH['ohserver'], gConfigurationOH['ohitem'])
 	try:
 		req = requests.put(url, data=state, headers=basic_header())
 		if req.status_code != requests.codes.ok:
@@ -94,15 +95,14 @@ def basic_header():
 
 if __name__ == "__main__":
 	configurationManager()
+	gRequester = PyiCloudService(gConfigurationiCloud['username'], gConfigurationiCloud['password'])
 
 	while 1:
 		lat, long = getDeviceCoordinates()
 		if calculateDistance(lat, long) == True:
-			print ('YES')
 			logging.info('User is in Geofence')
 			postUpdate('ON')
 		else:
-			print('NO')
 			logging.info('User is outside of Geofence')
 			postUpdate('OFF')
 		time.sleep(int(gConfigurationOH['interval']))
