@@ -16,7 +16,7 @@ def configurationManager():
 	global gConfigurationOH
 
 	try:
-		gConfig.read('configuration2.ini')
+		gConfig.read('configuration.ini')
 		logging.info('Configuration loaded')
 	except:
 		print('Exception! Please check the log')
