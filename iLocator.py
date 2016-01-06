@@ -99,9 +99,9 @@ if __name__ == "__main__":
 		if calculateDistance(lat, long) == True:
 			print ('YES')
 			logging.info('User is in Geofence')
-			# postUpdate('ON')
+			postUpdate('ON')
 		else:
 			print('NO')
 			logging.info('User is outside of Geofence')
-			# postUpdate('OFF')
+			postUpdate('OFF')
 		time.sleep(60)
