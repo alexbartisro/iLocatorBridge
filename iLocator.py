@@ -50,12 +50,9 @@ def getDeviceCoordinates():
 		locationDictionary = (gRequester.devices[gConfigurationiCloud['deviceid']].location())
 	except Exception, e:
 		print('Exception! Please check the log')
-		logging.error('Could not get device coordinates.')
-		if gRequester is None:
-			logging.info('gRequester is None')
-		else:
-			logging.info('gRequester')
-			logging.info(gRequester)
+		logging.error('Could not get device coordinates. Retrying!')
+		gRequester = PyiCloudService(gConfigurationiCloud['username'], gConfigurationiCloud['password'])
+		getDeviceCoordinates()
 	return float(locationDictionary['latitude']), float(locationDictionary['longitude'])
 	
 
