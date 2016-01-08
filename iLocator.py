@@ -1,5 +1,5 @@
 from pyicloud import PyiCloudService
-from geopy.distance import vincenty
+from math import radians, cos, sin, asin, sqrt
 import ConfigParser
 import ast, sys, time, requests, base64, logging
 
@@ -58,16 +58,30 @@ def getDeviceCoordinates():
 def calculateDistance(lat, longitude):
 	global gConfigurationGeofence
 
-	currentLocation = (lat, longitude)
-	homeLocation = (('%.6f' % float(gConfigurationGeofence['homelatitude'])), ('%.6f' %  float(gConfigurationGeofence['homelongitude'])))
-	if gConfigurationGeofence['distanceunit'] == 'm':
-		distance = (vincenty(currentLocation, homeLocation).meters)
-	else:
-		distance = (vincenty(currentLocation, homeLocation).feet)
+	distance = haversine(gConfigurationGeofence['homelatitude'], lat, gConfigurationGeofence['homelongitude'], long) 
+	logging.info('Distance from POI is ' + str(distance))
+	if gConfigurationGeofence['distanceunit'] == 'f':
+		distance = distance * 3.28084
 	if int(distance) <= int(gConfigurationGeofence['geofenceradius']):
 		return True
 	else:
 		return False
+
+def haversine(lat1, lat2, lon1, lon2):
+	#Thanks for this Aaron D http://stackoverflow.com/questions/15736995/how-can-i-quickly-estimate-the-distance-between-two-latitude-longitude-points
+    	lon1 = (float(lon1))
+    	lat1 = (float(lat1))
+    	lon2 = (float(lon2))
+    	lat1 = (float(lat2))
+    	# convert decimal degrees to radians 
+    	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+    	# haversine formula 
+    	dlon = lon2 - lon1 
+    	dlat = lat2 - lat1 
+    	a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    	c = 2 * asin(sqrt(a)) 
+    	m = 6367 * c * 1000
+    	return m
 
 def postUpdate(state):
 	global gConfigurationOH
