@@ -43,19 +43,21 @@ def configSectionMap(section):
 def getDeviceCoordinates():
 	global gConfigurationiCloud
 	global gConfigurationGeofence
+	global gConfigurationOH
 	global gRequester
-
-	try:
-		deviceList = gRequester.devices
-		locationDictionary = (gRequester.devices[gConfigurationiCloud['deviceid']].location())
-	except Exception, e:
-		print('Exception! Please check the log')
-		logging.error('Could not get device coordinates. Retrying!')
-	if locationDictionary is None:		
-		gRequester = PyiCloudService(gConfigurationiCloud['username'], gConfigurationiCloud['password'])
-		getDeviceCoordinates()
-	else:
-		return float(locationDictionary['latitude']), float(locationDictionary['longitude'])
+	locationDictionary = None
+	
+	while locationDictionary is None:
+		try:
+			deviceList = gRequester.devices
+			locationDictionary = (gRequester.devices[gConfigurationiCloud['deviceid']].location())
+		except Exception, e:
+			print('Exception! Please check the log')
+			logging.error('Could not get device coordinates. Retrying!')
+			time.sleep(int(gConfigurationOH['interval']))	
+		pass	
+	
+	return float(locationDictionary['latitude']), float(locationDictionary['longitude'])
 	
 
 def calculateDistance(lat, longitude):
