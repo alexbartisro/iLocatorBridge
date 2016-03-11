@@ -10,38 +10,58 @@ import logging
 import argparse
 #  from pprint import pformat
 
+DEFAULT_CONFIG = 'configuration.ini'
+DEFAULT_LOGFILE = 'iLocatorLog.log'
 
-logger = logging.getLogger('iLocaterLog')
-gConfig = ConfigParser.ConfigParser()
-gConfigurationiCloud = {}
-gConfigurationGeofence = {}
-gConfigurationOH = {}
-gRequester = None
+logger = logging.getLogger('iLocater')
 
 
 def configurationManager(configfile):
-    global gConfigurationiCloud
-    global gConfigurationGeofence
-    global gConfigurationOH
-
+    gConfig = ConfigParser.ConfigParser()
     try:
         gConfig.read(configfile)
         logging.info('Configuration %s loaded' % (configfile, ))
         if logger.isEnabledFor(logging.DEBUG):
             for section in gConfig.sections():
-                logger.debug('Configuration[%s] %s' % (section, configSectionMap(section)))
+                logger.debug('Configuration[%s] %s' % (section, configSectionMap(gConfig, section)))
 
     except Exception, e:
         print('Exception! Please check the log: %s' % (e, ))
         logger.error('\r\nNo configuration avaialble. Please see https://github.com/trusk89/iLocatorBridge for configuration')
         sys.exit(0)
 
-    gConfigurationiCloud = configSectionMap('iCloud')
-    gConfigurationGeofence = configSectionMap('Geofence')
-    gConfigurationOH = configSectionMap('OpenHab')
+    # to stay backward compatible
+    geoFences = parseMultipleSections(gConfig, 'Geofence')
+    for fenceId, fence in geoFences.items():
+        if 'homelatitude' in fence or 'homelongitude' in fence:
+            for k in ['Latitude', 'Longitude']:
+                oldkey = 'home%s' % k.lower()
+                fence[k.lower()] = fence.get(oldkey, fence.get(k.lower()))
+
+            print "Warning: found HomeLatitude/HomeLongitude in Section [Geofence%s] " % (fenceId, )
+            print " - this is deprecated please use Lattitude/Longitude instead. exp: \n"
+            print "[Geofence%s]" % fenceId
+            for k, v in fence.items():
+                if not k.startswith('home'):
+                    print '%s: %s' % (k, v)
+            print ""
+
+    return (
+        configSectionMap(gConfig, 'iCloud'),
+        geoFences,
+        configSectionMap(gConfig, 'OpenHab'),
+    )
 
 
-def configSectionMap(section):
+def parseMultipleSections(gconfig, marker):
+    return dict([
+        (section[len(marker):], configSectionMap(gconfig, section))
+        for section in gconfig.sections()
+        if section.startswith(marker)
+    ])
+
+
+def configSectionMap(gConfig, section):
     dict = {}
     options = gConfig.options(section)
     for option in options:
@@ -55,17 +75,12 @@ def configSectionMap(section):
     return dict
 
 
-def getDeviceCoordinates():
-    global gConfigurationiCloud
-    global gConfigurationGeofence
-    global gConfigurationOH
-    global gRequester
+def getDeviceCoordinates(gRequester, deviceId):
     locationDictionary = None
 
     while locationDictionary is None:
         try:
-            # deviceList = gRequester.devices
-            locationDictionary = (gRequester.devices[gConfigurationiCloud['deviceid']].location())
+            locationDictionary = (gRequester.devices[deviceId].location())
         except Exception, e:
             print('Exception! Please check the log')
             logger.error('Could not get device coordinates. Retrying!: %s' % (e, ))
@@ -75,14 +90,13 @@ def getDeviceCoordinates():
     return float(locationDictionary['latitude']), float(locationDictionary['longitude'])
 
 
-def calculateDistance(lat, longitude):
-    global gConfigurationGeofence
+def calculateDistance(lat, longitude, geoFence):
 
-    distance = haversine(gConfigurationGeofence['homelatitude'], lat, gConfigurationGeofence['homelongitude'], long)
+    distance = haversine(geoFence['latitude'], lat, geoFence['longitude'], long)
     logging.info('Distance from POI is ' + str(distance))
-    if gConfigurationGeofence['distanceunit'] == 'f':
+    if geoFence['distanceunit'] == 'f':
         distance = distance * 3.28084
-    if int(distance) <= int(gConfigurationGeofence['geofenceradius']):
+    if int(distance) <= int(geoFence['geofenceradius']):
         return True
     else:
         return False
@@ -106,10 +120,10 @@ def haversine(lat1, lat2, lon1, lon2):
     return m
 
 
-def postUpdate(state):
+def postUpdate(variable, state):
     global gConfigurationOH
 
-    url = '%s/rest/items/%s/state' % (gConfigurationOH['ohserver'], gConfigurationOH['ohitem'])
+    url = '%s/rest/items/%s/state' % (gConfigurationOH['ohserver'], variable)
     try:
         req = requests.put(url, data=state, headers=basic_header())
         if req.status_code != requests.codes.ok:
@@ -130,7 +144,6 @@ def basic_header():
         "Authorization": "Basic %s" % auth,
         "Content-type": "text/plain"}
 
-DEFAULT_CONFIG = 'configuration.ini'
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -148,24 +161,45 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     logging.basicConfig(
-        filename='iLocatorLog.log', level=args.verbose and logging.DEBUG or logging.INFO,
+        filename=DEFAULT_LOGFILE, level=args.verbose and logging.DEBUG or logging.INFO,
         format='%(asctime)s %(message)s')
 
-    configurationManager(args.config)
+    gConfigurationiCloud, gConfigurationGeofence, gConfigurationOH = configurationManager(args.config)
     gRequester = PyiCloudService(gConfigurationiCloud['username'], gConfigurationiCloud['password'])
 
-    print args
     if args.listDevices:
+        # make it easy to get the device ids for config
         devices = gRequester.devices
         for idx, device in enumerate(devices.keys()):
             print 'device%d: %s  # %s' % (idx, device, devices[device])
     else:
+        # get the first configured device for default case
+        devices = [d for d in sorted(gConfigurationiCloud.keys()) if d.startswith('deviceid')]
+        defaultDevice = devices[0]
+        logging.debug('Default Device: %s of %s' % (defaultDevice, devices))
+
         while 1:
-            lat, long = getDeviceCoordinates()
-            if calculateDistance(lat, long) == True:
-                logging.info('User is in Geofence')
-                postUpdate('ON')
-            else:
-                logging.info('User is outside of Geofence')
-                postUpdate('OFF')
+            for geoId, geoFence in gConfigurationGeofence.items():
+                # look for device overrite on fence
+                device = geoFence.get('device') or defaultDevice
+                deviceName = device.lower() == 'deviceid' and '' or '%s ' % device[len('deviceid'):]
+                deviceId = gConfigurationiCloud[device.lower()]
+
+                # look for variable overrite on fence
+                variable = geoFence.get('ohitem') or gConfigurationOH.get('ohitem')
+                if not variable:
+                    msg = "No OHItem is definded not in [Geofence%s] or [OpenHab]" % (geoId)
+                    print msg
+                    loggin.error(msg)
+                    continue
+
+                logging.debug('Device: %s(%s) -> %s' % (deviceName, variable, geoFence))
+                lat, long = getDeviceCoordinates(gRequester, deviceId)
+                if calculateDistance(lat, long, geoFence) is True:
+                    logging.info('Device %sis in Geofence %s' % (deviceName, geoId))
+                    postUpdate(variable, 'ON')
+                else:
+                    logging.info('Device %sis outside of Geofence %s' % (deviceName, geoId))
+                    postUpdate(variable, 'OFF')
+
             time.sleep(int(gConfigurationOH['interval']))
