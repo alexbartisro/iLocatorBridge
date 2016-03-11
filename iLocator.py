@@ -1,14 +1,12 @@
 from pyicloud import PyiCloudService
 from math import radians, cos, sin, asin, sqrt
 import ConfigParser
-# import ast
 import sys
 import time
 import requests
 import base64
 import logging
 import argparse
-#  from pprint import pformat
 
 DEFAULT_CONFIG = 'configuration.ini'
 DEFAULT_LOGFILE = 'iLocatorLog.log'
