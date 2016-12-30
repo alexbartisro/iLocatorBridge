@@ -177,6 +177,7 @@ if __name__ == "__main__":
         logging.debug('Default Device: %s of %s' % (defaultDevice, devices))
 
         while 1:
+            coordCache = {}
             for geoId, geoFence in gConfigurationGeofence.items():
                 # look for device overrite on fence
                 device = geoFence.get('device') or defaultDevice
@@ -192,7 +193,10 @@ if __name__ == "__main__":
                     continue
 
                 logging.debug('Device: %s(%s) -> %s' % (deviceName, variable, geoFence))
-                lat, long = getDeviceCoordinates(gRequester, deviceId)
+                if device in coordCache:
+                    lat, long = coordCache[device]
+                else:
+                    lat, long = coordCache[device] = getDeviceCoordinates(gRequester, deviceId)
                 if calculateDistance(lat, long, geoFence) is True:
                     logging.info('Device %sis in Geofence %s' % (deviceName, geoId))
                     postUpdate(variable, 'ON')
