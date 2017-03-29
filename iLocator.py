@@ -102,7 +102,6 @@ def getDistance (lat, longitude, geoFence):
 
 
 def convertDistance(meters,desiredUnit):
-    print meters
     if desiredUnit == 'km':
         return meters * .001
     elif desiredUnit == 'ft':
@@ -116,7 +115,6 @@ def convertDistance(meters,desiredUnit):
 
 
 def isInGeofence(distance, geoFence):
-    print distance
     if float(distance) <= float(geoFence['geofenceradius']):
         return True
     else:
