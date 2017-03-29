@@ -84,33 +84,40 @@ def getDeviceCoordinates(gRequester, deviceId):
         except Exception, e:
             print('Exception! Please check the log')
             logger.error('Could not get device coordinates. Retrying!: %s' % (e, ))
+            
+            #If item name provided, send the next poll time to OpenHAB based on the config RetryInterval value...
+            RetryPollTimeItem = gConfigurationOH.get('ohitem_nextpolltime')
+            if RetryPollTimeItem:
+                RetryPollTime = datetime.now() + timedelta(seconds=int(gConfigurationOH['retryinterval']))
+                postUpdate(RetryPollTimeItem, str(RetryPollTime))
+
             time.sleep(int(gConfigurationOH['retryinterval']))
         pass
 
     return float(locationDictionary['latitude']), float(locationDictionary['longitude'])
 
 
-def calculateDistance(lat, longitude, geoFence):
+def getDistance (lat, longitude, geoFence):
+    return convertDistance(haversine(geoFence['latitude'], lat, geoFence['longitude'], long),geoFence['distanceunit'])
 
-    distance = haversine(geoFence['latitude'], lat, geoFence['longitude'], long)
-    if geoFence['distanceunit'] == 'ft':
-        distance = distance * 3.28084
-    logging.info('Distance from POI is ' + str(distance))
-    if int(distance) <= int(geoFence['geofenceradius']):
-        return True
+
+def convertDistance(meters,desiredUnit):
+    print meters
+    if desiredUnit == 'km':
+        return meters * .001
+    elif desiredUnit == 'ft':
+        return meters * 3.28084
+    elif desiredUnit == 'mi':
+        return meters * 0.000621371
+    elif desiredUnit == 'nm':
+        return meters * 0.000539957
     else:
-        return False
-
-def getDistance(lat, longitude, geoFence):
-    distance = haversine(geoFence['latitude'], lat, geoFence['longitude'], long)
-    if geoFence['distanceunit'] == 'ft':
-        distance = distance * 3.28084
-    
-    return distance
+        return meters
 
 
-def isInGeofence(distance):
-    if int(distance) <= int(geoFence['geofenceradius']):
+def isInGeofence(distance, geoFence):
+    print distance
+    if float(distance) <= float(geoFence['geofenceradius']):
         return True
     else:
         return False
@@ -220,7 +227,7 @@ if __name__ == "__main__":
                 CurrentDistance = getDistance(lat, long, geoFence)
                 if variabledistance: postUpdate(variabledistance, str(CurrentDistance))
                 
-                if isInGeofence(CurrentDistance) is True:
+                if isInGeofence(CurrentDistance, geoFence) is True:
                     logging.info('Device %sis in Geofence %s' % (deviceName, geoId))
                     postUpdate(variable, 'ON')
                 else:
@@ -236,7 +243,7 @@ if __name__ == "__main__":
                 #Loop through the polling map and find the interval that corresponds to the current distance...
                 for interval in PollingMap.split(","):
                     dist, rate = interval.split("=")
-                    if int(CurrentDistance) <= int(dist):
+                    if float(CurrentDistance) <= float(dist):
                         PollingRate = rate
                         break
                                                 
